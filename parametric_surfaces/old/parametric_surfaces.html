@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>Three.js Geometry Browser</title>
+		<link rel="shortcut icon" href="../../../files/favicon.ico" />
+        <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+        <link rel=stylesheet href="css/base.css"/>
+		<style>
+			canvas {
+				display: block;
+				width: 100%;
+				height: 100%;
+			}
+
+			#newWindow {
+				display: block;
+				position: absolute;
+				bottom: 0.3em;
+				left: 0.5em;
+				color: #ffffff;
+			}
+		</style>
+	</head>
+	<body>
+
+		<script type='text/javascript' src='js/DAT.GUI.min.js'></script>
+        <script src="js/Three.js"></script>
+        <script src="js/Detector.js"></script>
+        <script src="js/Stats.js"></script>
+        <script src="js/TrackballControls.js"></script>
+        <!-- <script src="js/OrbitControls.js"></script> -->
+        <script src="js/THREEx.KeyboardState.js"></script>
+        <script src="js/THREEx.FullScreen.js"></script>
+        <script src="js/THREEx.WindowResize.js"></script>
+
+		<!-- <script src="js/three.module.js"></script> -->
+
+        <!-- http://silentmatt.com/javascript-expression-evaluator/ -->
+        <script src="js/parser.js"></script>
+
+		<!-- ------------------------------------------------------------ -->
+        <!-- Import maps polyfill -->
+		<!-- Remove this when import maps will be widely supported -->
+		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+
+		
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "./js/three.module.js"
+				}
+			}
+		</script>
+
+        <div id="ThreeJS" style="position: absolute; left:0px; top:0px"></div>
+        <script type="module"> //type="module"
+
+			// ******************************************************************************
+			//	import
+			// ******************************************************************************
+			import {
+				BufferGeometry,
+				Color,
+				Curve,
+				DoubleSide,
+				ExtrudeGeometry,
+				Float32BufferAttribute,
+				Group,
+				LineBasicMaterial,
+				LineSegments,
+				Mesh,
+				MeshPhongMaterial,
+				PerspectiveCamera,
+				PointLight,
+				Scene,
+				Shape,
+				WebGLRenderer,
+				WireframeGeometry
+			} from 'three';
+
+			import { TorusGeometry } from '../../src/geometries/TorusGeometry.js';
+			import { TorusKnotGeometry } from '../../src/geometries/TorusKnotGeometry.js';
+			import { RothGeometry } from '../../src/geometries/RothGeometry.js';
+			import { SuperEllisGeometry } from '../../src/geometries/SuperEllisGeometry.js';
+			import { SuperTorusGeometry } from '../../src/geometries/SuperTorusGeometry.js';
+
+			import { GUI } from '../../../examples/jsm/libs/lil-gui.module.min.js';
+			
+			import { OrbitControls } from '../../examples/jsm/controls/OrbitControls.js';
+			import { ParametricGeometry } from '../../examples/jsm/geometries/ParametricGeometry.js';
+
+			// ******************************************************************************
+			//	class
+			// ******************************************************************************
+			class CustomSinCurve extends Curve {
+
+				constructor( scale = 1 ) {
+
+					super();
+					this.scale = scale;
+
+				}
+
+				getPoint( t, optionalTarget = new Vector3() ) {
+
+					const tx = t * 3 - 1.5;
+					const ty = Math.sin( 2 * Math.PI * t );
+					const tz = 0;
+					return optionalTarget.set( tx, ty, tz ).multiplyScalar( this.scale );
+
+				}
+			}
+
+			// ******************************************************************************
+			//	global variables
+			// ******************************************************************************
+			//var gui = new dat.GUI();
+            var gui = new GUI();
+			
+			var gcrot = false;
+
+			var SurfName = [
+				'THREE.TorusGeometry',
+				'THREE.TorusKnotGeometry',
+				'THREE.RothGeometry',
+				'THREE.SuperEllisGeometry',
+				'THREE.SuperTorusGeometry'
+				];
+			var folder;
+
+			// custom global variables
+			var scene, camera, container, renderer, controls, stats;
+
+			var gui_xText, gui_yText, gui_zText, 
+				gui_uMin, gui_uMax, gui_vMin, gui_vMax,
+				gui_a, gui_b, gui_c, gui_d, gui_segments;
+
+			// var inputGui = {
+            //     xFuncText:  "cos(u)*(3+cos(v))",
+            //     yFuncText:  "sin(u)*(3+cos(v))",
+            //     zFuncText:  "sin(v)",
+            //     uMin:       0.0,
+            //     uMax:       6.283,
+            //     vMin:       0.0,
+            //     vMax:       6.283,
+            //     segments:   40,
+            //     a:          1.0,
+            //     b:          1.0,
+            //     c:          1.0,
+            //     d:          1.0,
+            // }
+
+            // // var xFuncText = "u^2 + sin(v)"; // "cos(u)*(a + b*cos(v))";
+            // // var yFuncText = "u^2 + sin(v)"; // "sin(u)*(a + b*cos(v))";
+            // // var zFuncText = "u^2 + sin(v)"; // "b*sin(v)";
+
+            // var xFunc = Parser.parse(inputGui.xFuncText).toJSFunction( ['u','v'] );
+            // var yFunc = Parser.parse(inputGui.yFuncText).toJSFunction( ['u','v'] );
+            // var zFunc = Parser.parse(inputGui.zFuncText).toJSFunction( ['u','v'] );
+
+			// parameters for the equations
+			var a = 1.0, b = 1.0, c = 1.0, d = 1.0;
+
+			var meshFunction;
+			var segments = 20;
+			var uMin = 0.0, uMax = 6.283, uRange = uMax - uMin,
+				vMin = 0.0, vMax = 6.283, vRange = vMax - vMin,
+				zMin = -10, zMax = 10, zRange = zMax - zMin;
+				
+
+			var xMin = 0;
+            var xMax = 0;
+            var yMin = 0;
+            var yMax = 0; // for autosizing window
+                
+            var graphGeometry;
+            var gridMaterial, wireMaterial, vertexColorMaterial;
+            var graphMesh;
+		
+			
+
+			let effectController = {
+					k: 1
+				};
+            var kprec = 0;
+			var group;
+
+			
+			
+
+
+			// ******************************************************************************
+			//	const
+			// ******************************************************************************
+
+			const twoPi = Math.PI * 2;
+
+			const guis = {
+				TorusGeometry: function ( mesh ) {
+
+					const data = {
+						radius: 10,
+						tube: 3,
+						radialSegments: 16,
+						tubularSegments: 100,
+						arc: twoPi,
+						gcrot: gcrot
+					};
+
+					function generateGeometry() {
+
+						updateGroupGeometry( mesh,
+							new TorusGeometry(data.radius, data.tube, data.radialSegments, data.tubularSegments, data.arc)
+						);
+						if (gcrot != data.gcrot)
+	                    	gcrot = data.gcrot;
+					}
+
+					folder = gui.addFolder( 'THREE.TorusGeometry' );
+
+					folder.add( data, 'radius', 1, 20 ).onChange( generateGeometry );
+					folder.add( data, 'tube', 0.1, 10 ).onChange( generateGeometry );
+					folder.add( data, 'radialSegments', 2, 30 ).step( 1 ).onChange( generateGeometry );
+					folder.add( data, 'tubularSegments', 3, 200 ).step( 1 ).onChange( generateGeometry );
+					folder.add( data, 'arc', 0.1, twoPi ).onChange( generateGeometry );
+					folder.add( data, 'gcrot').name('toggle rot').onChange( generateGeometry );
+					folder.close();
+                    generateGeometry();
+
+				},
+
+				TorusKnotGeometry: function ( mesh ) {
+
+					const data = {
+						radius: 10,
+						tube: 3,
+						tubularSegments: 64,
+						radialSegments: 8,
+						p: 2,
+						q: 3,
+						gcrot: gcrot
+					};
+
+                    function generateGeometry() {
+
+                        updateGroupGeometry( mesh,
+                            new TorusKnotGeometry( data.radius, data.tube, data.tubularSegments, 
+							data.radialSegments, data.p, data.q)
+                        );
+                        if (gcrot != data.gcrot)
+                            gcrot = data.gcrot;
+
+                    }
+
+                    folder = gui.addFolder( 'THREE.TorusKnotGeometry' );
+
+                    folder.add( data, 'radius', 1, 20 ).onChange( generateGeometry );
+                    folder.add( data, 'tube', 0.1, 10 ).onChange( generateGeometry );
+                    folder.add( data, 'tubularSegments', 3, 300 ).step( 1 ).onChange( generateGeometry );
+                    folder.add( data, 'radialSegments', 3, 20 ).step( 1 ).onChange( generateGeometry );
+                    folder.add( data, 'p', 1, 20 ).step( 1 ).onChange( generateGeometry );
+                    folder.add( data, 'q', 1, 20 ).step( 1 ).onChange( generateGeometry );
+                    folder.add( data, 'gcrot').name('toggle rot').onChange( generateGeometry );
+                    folder.close();
+                    generateGeometry();
+                },
+
+                RothGeometry: function ( mesh ) {
+
+                    const data = {
+                        w0: 1/(6*Math.PI),
+                        w1: 1/(3*Math.PI),
+                        radialSegments: 11,
+                        tubularSegments: 15,
+                        arc: 29*Math.PI/8,
+                        gcrot: gcrot
+                    };
+
+                    function generateGeometry() {
+
+                        updateGroupGeometry( mesh,
+                            new RothGeometry(data.w0, data.w1, data.radialSegments, data.tubularSegments, data.arc)
+                        );
+                        if (gcrot != data.gcrot)
+                        gcrot = data.gcrot;
+
+                    }
+
+                    folder = gui.addFolder( 'THREE.RothGeometry' );
+
+                    folder.add( data, 'w0', 0.0125, 1 ).onChange( generateGeometry );
+                    folder.add( data, 'w1', 0.0125, 1 ).onChange( generateGeometry );
+                    folder.add( data, 'radialSegments', 2, 50 ).step( 1 ).onChange( generateGeometry );
+                    folder.add( data, 'tubularSegments', 5, 200 ).step( 1 ).onChange( generateGeometry );
+                    folder.add( data, 'arc', 0.1, 8*Math.PI ).onChange( generateGeometry );
+                    folder.add( data, 'gcrot').name('toggle rot').onChange( generateGeometry );
+                    folder.close();
+                    generateGeometry();
+
+                },
+
+                SuperEllisGeometry: function ( mesh ) {
+
+                    const data = {
+                        w0: 1.0,
+                        w1: 1.0,
+                        a: 5.0,
+                        b: 5.0,
+                        c: 5.0,
+                        radialSegments: 11,
+                        tubularSegments: 15,
+                        arc: 2*Math.PI,
+                        gcrot: gcrot
+                    };
+
+                    function generateGeometry() {
+
+                        updateGroupGeometry( mesh,
+                            new SuperEllisGeometry( data.w0, data.w1, data.a, data.b, data.c, 
+								data.radialSegments, data.tubularSegments, data.arc)
+                        );
+                        if (gcrot != data.gcrot)
+                        gcrot = data.gcrot;
+
+                    }
+
+                    folder = gui.addFolder( 'THREE.SuperEllisGeometry' );
+
+                    folder.add( data, 'w0', 0.125, 8 ).step(0.0625).onChange( generateGeometry );
+                    folder.add( data, 'w1', 0.125, 8 ).step(0.0625).onChange( generateGeometry );
+                    folder.add( data, 'a', 1.0, 10 ).onChange( generateGeometry );
+                    folder.add( data, 'b', 1.0, 10 ).onChange( generateGeometry );
+                    folder.add( data, 'c', 1.0, 10 ).onChange( generateGeometry );
+                    folder.add( data, 'radialSegments', 5, 200 ).step( 1 ).onChange( generateGeometry );
+                    folder.add( data, 'tubularSegments', 5, 100 ).step( 1 ).onChange( generateGeometry );
+                    folder.add( data, 'arc', 0, 2*Math.PI ).onChange( generateGeometry );
+                    folder.add( data, 'gcrot').name('toggle rot').onChange( generateGeometry );
+                    folder.close();
+                    generateGeometry();
+
+                },
+
+                SuperTorusGeometry: function ( mesh ) {
+
+                    const data = {
+                        w0 : 1,
+                        w1 : 1,
+                        radius: 10,
+                        tube: 3,
+                        radialSegments: 16,
+                        tubularSegments: 100,
+                        arc: twoPi,
+                        gcrot: gcrot
+                    };
+
+                    function generateGeometry() {
+
+                        updateGroupGeometry( mesh,
+                            new SuperTorusGeometry( data.w0, data.w1, data.radius, data.tube, 
+								data.radialSegments, data.tubularSegments, data.arc )
+                        );
+                        if (gcrot != data.gcrot)
+                        gcrot = data.gcrot;
+
+                    }
+
+                    folder = gui.addFolder( 'THREE.SuperTorusGeometry' );
+
+                    folder.add( data, 'w0', 0.125, 8 ).step(0.0625).onChange( generateGeometry );
+                    folder.add( data, 'w1', 0.125, 8 ).step(0.0625).onChange( generateGeometry );
+                    folder.add( data, 'radius', 1, 20 ).onChange( generateGeometry );
+                    folder.add( data, 'tube', 0.1, 10 ).onChange( generateGeometry );
+                    folder.add( data, 'radialSegments', 2, 30 ).step( 1 ).onChange( generateGeometry );
+                    folder.add( data, 'tubularSegments', 3, 200 ).step( 1 ).onChange( generateGeometry );
+                    folder.add( data, 'arc', 0.1, twoPi ).onChange( generateGeometry );
+                    folder.add( data, 'gcrot').name('toggle rot').onChange( generateGeometry );
+                    folder.close();
+                    generateGeometry();
+
+                },
+
+				HeartGeometry: function ( mesh ) {
+					// ???
+					const x = 0, y = 0;
+					const heartShape = new Shape();
+					heartShape.moveTo( x + 5, y + 5 );
+					heartShape.bezierCurveTo( x + 5, y + 5, x + 4, y, x, y );
+					heartShape.bezierCurveTo( x - 6, y, x - 6, y + 7, x - 6, y + 7 );
+					heartShape.bezierCurveTo( x - 6, y + 11, x - 3, y + 15.4, x + 5, y + 19 );
+					heartShape.bezierCurveTo( x + 12, y + 15.4, x + 16, y + 11, x + 16, y + 7 );
+					heartShape.bezierCurveTo( x + 16, y + 7, x + 16, y, x + 10, y );
+					heartShape.bezierCurveTo( x + 7, y, x + 5, y + 5, x + 5, y + 5 );
+
+					const data = { 
+						depth: 8, 
+						bevelEnabled: true, 
+						bevelSegments: 2, 
+						steps: 2, 
+						bevelSize: 1, 
+						bevelThickness: 1,
+						gcrot: gcrot 
+					}
+
+					function generateGeometry() {
+
+						updateGroupGeometry( mesh,
+							new ExtrudeGeometry( heartShape, data )
+						);
+						if (gcrot != data.gcrot)
+							gcrot = data.gcrot;
+
+					}
+
+					folder = gui.addFolder( 'THREE.HeartShape' );
+
+					folder.add( data, 'depth', 0.125, 8 ).step(0.0625).onChange( generateGeometry );
+					folder.add( data, 'bevelEnabled').onChange( generateGeometry );
+					folder.add( data, 'bevelSegments', 1, 5 ).step( 1 ).onChange( generateGeometry );
+					folder.add( data, 'steps', 2, 10 ).step( 1 ).onChange( generateGeometry );
+					folder.add( data, 'bevelSize', 1, 5 ).step( 1 ).onChange( generateGeometry );
+					folder.add( data, 'bevelThickness', 1, 10 ).step( 1 ).onChange( generateGeometry );
+					folder.add( data, 'gcrot').name('toggle rot').onChange( generateGeometry );
+					folder.close();
+					generateGeometry();
+
+
+				}
+
+
+			};
+
+			const selectedGeometry = window.location.hash.substring( 1 );
+
+
+			// ******************************************************************************
+			//	init gui
+			// ******************************************************************************
+			// var input = {
+			// 	xFuncText 	: 'cos(u)*(a + b*cos(v))',
+			// 	yFuncText 	: 'sin(u)*(a + b*cos(v))',
+			// 	zFuncText 	: 'b*sin(v)',
+			// 	uMin		:  0.01,
+			// 	uMax		:  0.02,
+			// 	vMin		:  0.01,
+			// 	vMax		:  0.02,
+			// 	segments	:  20,
+			// 	a			:  1,
+			// 	b			:  1,
+			// 	c			:  1,
+			// 	d			:  1,
+			// 	graphFunc: 		function() { createGraph(); },
+			// 	resetCamera: 	function() { resetCamera(); }
+			// }
+			
+			// var xFunc = Parser.parse(input.xFuncText).toJSFunction( ['u','v'] );
+			// var yFunc = Parser.parse(input.yFuncText).toJSFunction( ['u','v'] );
+			// var zFunc = Parser.parse(input.zFuncText).toJSFunction( ['u','v'] );
+
+			//var gui = new GUI();
+            //gui.add( effectController, 'k', [ 1, 2, 3, 4, 5, 6 ] ).name( 'Surface n.' ).onChange( render );
+
+			var inputGui = {
+                xFuncText:  "cos(u)*(3+cos(v))",
+                yFuncText:  "sin(u)*(3+cos(v))",
+                zFuncText:  "sin(v)",
+                uMin:       0.0,
+                uMax:       6.283,
+                vMin:       0.0,
+                vMax:       6.283,
+                segments:   40,
+                a:          1.0,
+                b:          1.0,
+                c:          1.0,
+                d:          1.0,
+            }
+
+            // var xFuncText = "u^2 + sin(v)"; // "cos(u)*(a + b*cos(v))";
+            // var yFuncText = "u^2 + sin(v)"; // "sin(u)*(a + b*cos(v))";
+            // var zFuncText = "u^2 + sin(v)"; // "b*sin(v)";
+
+            var xFunc = Parser.parse(inputGui.xFuncText).toJSFunction( ['u','v'] );
+            var yFunc = Parser.parse(inputGui.yFuncText).toJSFunction( ['u','v'] );
+            var zFunc = Parser.parse(inputGui.zFuncText).toJSFunction( ['u','v'] );
+
+			
+			// folder = gui.addFolder("Inserire funzione: ");
+			// folder.add( inputGui, 'xFuncText' ).name("x = ");
+			// folder.add( input, 'yFuncText' ).name("y = ");
+			// folder.add( input, 'zFuncText' ).name("z = ");
+			// folder.add( input, 'uMin' ).name("uMin = ");
+			// folder.add( input, 'uMax' ).name("uMax = ");
+			// folder.add( input, 'vMin' ).name("vMin = ");
+			// folder.add( input, 'vMax' ).name("vMax = "); 
+			
+			// var gui_parameters = gui.addFolder('Parameters:')
+			// /*************************************/
+			// gui_a = gui_parameters.add( input, 'a' ).min(-5).max(5).step(0.01).name('a = ');
+			// gui_a.onChange( function(value) { createGraph(); } );
+			// gui_b = gui_parameters.add( input, 'b' ).min(-5).max(5).step(0.01).name('b = ');
+			// gui_b.onChange( function(value) { createGraph(); } );
+			// gui_c = gui_parameters.add( input, 'c' ).min(-5).max(5).step(0.01).name('c = ');
+			// gui_c.onChange( function(value) { createGraph(); } );
+			// gui_d = gui_parameters.add( input, 'd' ).min(-5).max(5).step(0.01).name('d = ');
+			// gui_d.onChange( function(value) { createGraph(); } );
+		
+			// /*************************************/
+			// // GUI -- preset equations
+			// gui.add( input, 'resetCamera' ).name("Reset Camera");
+			// gui.add( input, 'graphFunc' ).name("Graph Function");	
+			
+
+
+			init();
+			animate();
+
+			// init 
+			function init() {
+				// SCENE        ******************************************************************
+				scene = new Scene();
+				scene.background = new Color( 0x444444 );
+
+				// CAMERA       ******************************************************************
+				var VIEW_ANGLE = 75; //45 
+				var SCREEN_WIDTH = window.innerWidth;
+				var SCREEN_HEIGHT = window.innerHeight;
+				var ASPECT = SCREEN_WIDTH / SCREEN_HEIGHT;
+				var NEAR = 0.1; 
+				var FAR = 20000; // 20000 - 50
+				// // create camera
+
+				var camera = new THREE.PerspectiveCamera( VIEW_ANGLE, ASPECT, NEAR, FAR);
+				scene.add(camera);
+				camera.position.z = 30;
+				//camera.position.set(0,150,400); 
+				camera.lookAt(scene.position);
+
+				// RENDERER     ******************************************************************
+				var renderer = new THREE.WebGLRenderer( {antialias:true} );
+				renderer.setSize(SCREEN_WIDTH, SCREEN_HEIGHT);
+				//renderer.setPixelRatio( window.devicePixelRatio );
+				container = document.getElementById( 'ThreeJS' );
+				container.appendChild( renderer.domElement );
+
+
+				// CONTROLS     ******************************************************************
+				controls = new THREE.TrackballControls( camera, renderer.domElement );
+				//const orbit = new OrbitControls( camera, renderer.domElement );
+				//orbit.enableZoom = true;
+
+				// LIGHTS 		******************************************************************
+				const lights = [];
+				lights[ 0 ] = new PointLight( 0xffffff, 1, 0 );
+				lights[ 1 ] = new PointLight( 0xffffff, 1, 0 );
+				lights[ 2 ] = new PointLight( 0xffffff, 1, 0 );
+
+				lights[ 0 ].position.set( 0, 200, 0 );
+				lights[ 1 ].position.set( 100, 200, 100 );
+				lights[ 2 ].position.set( - 100, - 200, - 100 );
+
+				scene.add( lights[ 0 ] );
+				scene.add( lights[ 1 ] );
+				scene.add( lights[ 2 ] );
+
+				// geometries
+				const group = new Group();
+
+				const geometry = new BufferGeometry();
+				geometry.setAttribute( 'position', new Float32BufferAttribute( [], 3 ) );
+
+				const lineMaterial = new LineBasicMaterial( { color: 0xffffff, transparent: true, opacity: 0.5 } );
+				const meshMaterial = new MeshPhongMaterial( { color: 0x156289, emissive: 0x072534, side: DoubleSide, flatShading: true } );
+
+				group.add( new LineSegments( geometry, lineMaterial ) );
+				group.add( new Mesh( geometry, meshMaterial ) );
+
+				for (let k = 1; k<7; ++k) {
+				//   const options = chooseFromHash( k, group );
+				//   scene.add( group );
+					reset(k)
+				}
+
+
+				////////////
+				// CUSTOM //
+				////////////
+                
+				scene.add( new THREE.AxisHelper() );
+
+
+				var normMaterial = new THREE.MeshNormalMaterial;
+				var shadeMaterial = new THREE.MeshLambertMaterial( { color: 0xff0000 } );
+
+				wireMaterial = new THREE.MeshPhongMaterial( { color: 0x156289, emissive: 0x072534, side: THREE.DoubleSide, flatShading: true } );
+				var vertexColorMaterial  = new THREE.MeshBasicMaterial( { vertexColors: THREE.VertexColors } );
+
+
+				///////////////////
+				//   GUI SETUP   //	
+				///////////////////
+
+				//gui = new GUI();
+
+				var parameters = {
+					resetCam:  function() { resetCamera(); },	
+					preset:   function() { preset(); },
+					graphFunc: function() { createGraph(); },
+					finalValue: 337
+				};
+
+				// GUI -- equation
+				gui_xText = gui.add( inputGui, 'xFuncText' ).name('x = f(u,v) = ');
+				gui_yText = gui.add( inputGui, 'yFuncText' ).name('y = g(u,v) = ');
+				gui_zText = gui.add( inputGui, 'zFuncText' ).name('z = h(u,v) = ');
+				gui_uMin = gui.add( inputGui, 'uMin' ).name('u Minimum = ');
+				gui_uMax = gui.add( inputGui, 'uMax' ).name('u Maximum = ');
+				gui_vMin = gui.add( inputGui, 'vMin' ).name('v Minimum = ');
+				gui_vMax = gui.add( inputGui, 'vMax' ).name('v Maximum = ');
+				gui_segments = gui.add( inputGui, 'segments' ).name('Subdivisions = ');
+
+				// GUI -- parameters
+				// var gui_parameters = gui.addFolder('Parameters');
+				// a = b = c = d = 1.0;
+				// gui_a = gui_parameters.add( inputGui, 'a' ).min(-5).max(5).step(0.01).name('a = ');
+				// gui_a.onChange( function(value) { createGraph(); } );
+				// gui_b = gui_parameters.add( inputGui, 'b' ).min(-5).max(5).step(0.01).name('b = ');
+				// gui_b.onChange( function(value) { createGraph(); } );
+				// gui_c = gui_parameters.add( inputGui, 'c' ).min(-5).max(5).step(0.01).name('c = ');
+				// gui_c.onChange( function(value) { createGraph(); } );
+				// gui_d = gui_parameters.add( inputGui, 'd' ).min(-5).max(5).step(0.01).name('d = ');
+				// gui_d.onChange( function(value) { createGraph(); } );
+				
+				// gui_a.setValue(1);
+				// gui_b.setValue(1);
+				// gui_c.setValue(1);
+				// gui_d.setValue(1);
+
+				// GUI -- preset equations
+				//var gui_preset = gui.addFolder('Preset equations');
+				gui.add( parameters, 'resetCam' ).name("Reset Camera");
+				gui.add( parameters, 'graphFunc' ).name("Graph Function");
+
+				// resize 
+				window.addEventListener( 'resize', function () {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+				}, false );
+
+				preset();
+				//render();
+			}
+			
+				
+
+		
+			// ******************************************************************************
+			//  functions
+			// ******************************************************************************
+			function reset(k) {
+			   const options = chooseFromHash( k, group );
+			   scene.add( group );
+            }
+
+			function resetCamera() {
+				// CAMERA
+				var SCREEN_WIDTH = window.innerWidth, SCREEN_HEIGHT = window.innerHeight;
+                var VIEW_ANGLE = 45, ASPECT = SCREEN_WIDTH / SCREEN_HEIGHT, NEAR = 0.1, FAR = 20000;
+                camera = new THREE.PerspectiveCamera( VIEW_ANGLE, ASPECT, NEAR, FAR);
+                camera.position.set( 2*xMax, 0.5*yMax, 4*zMax );
+                camera.up = new THREE.Vector3( 0, 0, 1 );
+                camera.lookAt(scene.position);	
+                scene.add(camera);
+                
+                controls = new THREE.TrackballControls( camera, renderer.domElement );
+                THREEx.WindowResize(renderer, camera);
+			}
+
+			function animate() 
+            {
+                requestAnimationFrame( animate );
+                render();
+                update();
+            }
+
+            function update()
+            {
+                controls.update();
+            }
+
+
+			function render() {
+				// if ( effectController.k !== kprec ){
+				// 	// ???
+                //     //gui.removeFolder(folder);
+                //     kprec = effectController.k;
+				// 	reset(kprec);
+				// }
+
+				// requestAnimationFrame( render );
+
+				// //if ( options.fixed ) {
+				// 	if (gcrot){
+				// 		group.rotation.x += 0.005;
+				// 		group.rotation.y += 0.005;
+				// 	}
+				// //}
+				renderer.render( scene, camera );
+
+			}
+
+
+
+			function updateGroupGeometry( mesh, geometry ) {
+
+				mesh.children[ 0 ].geometry.dispose();
+				mesh.children[ 1 ].geometry.dispose();
+
+				mesh.children[ 0 ].geometry = new WireframeGeometry( geometry );
+				mesh.children[ 1 ].geometry = geometry;
+
+				// these do not update nicely together if shared
+			}
+
+			function chooseFromHash( k, mesh ) {
+                switch (k) {
+			    case 1:
+					var selectedGeometry = window.location.hash.substring( 1 ) || 'TorusGeometry';
+				break;
+				case 2:
+					var selectedGeometry = window.location.hash.substring( 1 ) || 'TorusKnotGeometry';
+				break;
+				case 3:
+					var selectedGeometry = window.location.hash.substring( 1 ) || 'RothGeometry';
+				break;
+				case 4:
+					var selectedGeometry = window.location.hash.substring( 1 ) || 'SuperEllisGeometry';
+				break;
+				case 5:
+					var selectedGeometry = window.location.hash.substring( 1 ) || 'SuperTorusGeometry';
+				break;
+				// ???
+				case 6:
+					var selectedGeometry = window.location.hash.substring( 1 ) || 'HeartGeometry';
+				break;
+			    }
+			    guis[ selectedGeometry ]( mesh );
+
+		 		// if ( guis[ selectedGeometry ] !== undefined ) {
+				// 	guis[ selectedGeometry ]( mesh );
+				// }
+
+				// if ( selectedGeometry === 'RothGeometry' ) {
+
+				// 	//return { fixed: true };
+				// 	return { fixed: false };
+
+				// }
+
+				// //No configuration options
+				// return {};
+
+			}
+
+			function createGraph() {
+				uRange = uMax - uMin;
+				vRange = vMax - vMin;
+				xFunc = Parser.parse(inputGui.xFuncText).toJSFunction( ['u','v'] );	
+				yFunc = Parser.parse(inputGui.yFuncText).toJSFunction( ['u','v'] );	
+				zFunc = Parser.parse(inputGui.zFuncText).toJSFunction( ['u','v'] );
+				
+				var meshFunction = function(u0, v0)  {
+					// punti griglia
+					var u = uRange * u0 + uMin;
+					var v = vRange * v0 + vMin;
+					var x = xFunc(u,v);
+					var y = yFunc(u,v);
+					var z = zFunc(u,v);
+					if ( isNaN(x) || isNaN(y) || isNaN(z) )
+						return new THREE.Vector3(0,0,0); // TODO: better fix
+					else
+						return new THREE.Vector3(x, y, z);
+				};
+				
+				// true => sensible image tile repeat...  
+				graphGeometry = new THREE.ParametricGeometry( meshFunction, segments, segments, true );
+	
+				///////////////////////////////////////////////
+				// calculate vertex colors based on Z values //
+				///////////////////////////////////////////////
+				graphGeometry.computeBoundingBox();
+				zMin = graphGeometry.boundingBox.min.z;
+				zMax = graphGeometry.boundingBox.max.z;
+				zRange = zMax - zMin;
+
+				var color, point, face, numberOfSides, vertexIndex;
+				// faces are indexed using characters
+				var faceIndices = [ 'a', 'b', 'c', 'd' ];
+				// first, assign colors to vertices as desired
+				for ( var i = 0; i < graphGeometry.vertices.length; i++ ) {
+					point = graphGeometry.vertices[ i ];
+					color = new THREE.Color( 0x0000ff );
+					color.setHSL( 0.7 * (zMax - point.z) / zRange, 1, 0.5 );
+					graphGeometry.colors[i] = color; // use this array for convenience
+				}
+				// copy the colors as necessary to the face's vertexColors array.
+				for ( var i = 0; i < graphGeometry.faces.length; i++ ) {
+					face = graphGeometry.faces[ i ];
+					numberOfSides = ( face instanceof THREE.Face3 ) ? 3 : 4;
+					for( var j = 0; j < numberOfSides; j++ ) 
+					{
+						vertexIndex = face[ faceIndices[ j ] ];
+						face.vertexColors[ j ] = graphGeometry.colors[ vertexIndex ];
+					}
+				}
+				///////////////////////
+				// end vertex colors //
+				///////////////////////
+				
+				xMin = graphGeometry.boundingBox.min.x;
+				xMax = graphGeometry.boundingBox.max.x;
+				yMin = graphGeometry.boundingBox.min.y;
+				yMax = graphGeometry.boundingBox.max.y;
+	
+				// material choices: vertexColorMaterial, wireMaterial , normMaterial , shadeMaterial
+				
+				if (graphMesh) {
+					scene.remove( graphMesh );
+					// renderer.deallocateObject( graphMesh );
+				}
+
+				//wireMaterial.map.repeat.set( segments, segments );
+				
+				graphMesh = new THREE.Mesh( graphGeometry, wireMaterial );
+				graphMesh.doubleSided = true;
+				scene.add(graphMesh);
+
+			}
+
+			function preset() {
+                // gui_xText.setValue("cos(u)*(a + b*cos(v))");
+                // gui_yText.setValue("sin(u)*(a + b*cos(v))");
+                // gui_zText.setValue("b*sin(v)");
+                // gui_xText.setValue("cos(u)*(3+cos(v))");
+                // gui_yText.setValue("sin(u)*(3+cos(v))");
+                // gui_zText.setValue("sin(v)");
+                // gui_uMin.setValue(0); gui_uMax.setValue(6.283);
+                // gui_vMin.setValue(0); gui_vMax.setValue(6.283);
+                // gui_a.setValue(3);
+                // gui_b.setValue(1);
+                // gui_segments.setValue(40);
+                createGraph(); 
+				resetCamera();
+            }
+
+
+		</script>
+	</body>
+</html>
