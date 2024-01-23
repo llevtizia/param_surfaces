@@ -8455,8 +8455,11 @@ THREE.Geometry.prototype = {
 			face.centroid.set( 0, 0, 0 );
 
 			face.centroid.add( this.vertices[ face.a ] );
+			console.log(this.vertices[ face.a ])
 			face.centroid.add( this.vertices[ face.b ] );
+			console.log(this.vertices[ face.b ])
 			face.centroid.add( this.vertices[ face.c ] );
+			console.log(this.vertices[ face.c ])
 			face.centroid.divideScalar( 3 );
 
 		}
@@ -33895,16 +33898,27 @@ THREE.ParametricGeometry = function ( func, slices, stacks ) {
 	var stackCount = stacks + 1;
 	var sliceCount = slices + 1;
 
-	for ( i = 0; i <= stacks; i ++ ) {
+	console.log('stacks value: ' + stacks);
+	console.log('stackCount value: ' + stackCount);
+	console.log('slices value: ' + slices);
+	console.log('sliceCount value: ' + sliceCount);
 
+	// Vertex Generation Loop:
+	for ( i = 0; i <= stacks; i ++ ) {
+		console.log('i value: ' + i);
 		v = i / stacks;
+		console.log('v value: ' + v);
 
 		for ( j = 0; j <= slices; j ++ ) {
-
+			console.log('j value: ' + j);
 			u = j / slices;
+			console.log('u value: ' + u);
 
 			p = func( u, v );
 			verts.push( p );
+			console.log('p.x value: ' + p.x);
+			console.log('p.y value: ' + p.y);
+			console.log('p.z value: ' + p.z);
 
 		}
 	}

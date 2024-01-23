@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+		<meta charset="utf-8">
+		<title>Three.js Geometry Browser</title>
+		<link rel="stylesheet" type="text/css" href="css3d_sprites.html"/>
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+        <link rel="stylesheet" href="css/base.css"/>
+		<style>
+			canvas {
+				display: block;
+				width: 100%;
+				height: 100%;
+			}
+
+			#newWindow {
+				display: block;
+				position: absolute;
+				bottom: 0.3em;
+				left: 0.5em;
+				color: #ffffff;
+			}
+		</style>
+	</head> 
+
+	<body>
+
+		<script src="js/parser.js"></script>
+        <script src="js/Three.js"></script>
+        <script src="js/TrackballControls.js"></script>
+
+		<div id="control">
+            <div>
+                <textarea id="input_equation" placeholder="input equation (press enter)"></textarea>
+            </div>
+            <div class="grid-container">
+                <textarea id="xMin" placeholder="x min"></textarea>
+                <textarea id="xMax" placeholder="x max"></textarea>
+                <textarea id="yMin" placeholder="y min"></textarea>
+                <textarea id="yMax" placeholder="y max"></textarea>
+                <textarea id="segments" placeholder="subdivisions"></textarea>
+                <button id="drawFunction">draw</button>
+            </div>
+              
+        </div>
+
+		<script>
+
+
+			// MAIN
+
+			// standard global variables
+			var container, scene, camera, renderer, controls, group;
+
+
+			// custom global variables
+			var input_text, xMin_text, xMax_text, yMin_text, yMax_text;
+
+			var funcText, func; // xFuncText, yFuncText, zFuncText;
+			var xMin, xMax, yMin, yMax, zMin, zMax;
+			var xRange, yRange, zRange;
+			var segments = 10;
+
+			var funcText = "x^2 - y^2";
+			var func = Parser.parse(funcText).toJSFunction( ['x','y'] );
+
+
+				
+			var graphGeometry;
+			var gridMaterial, wireMaterial, vertexColorMaterial;
+			var graphMesh;
+
+			handleEvents(); 
+           
+            // ********************* check parser
+            const parser = new Parser();
+            let expr = parser.parse('2 * x + 1');
+            console.log(expr.evaluate({ x: 3 }));
+            // **********************************
+
+			init();
+			render();
+
+			// FUNCTIONS 		
+			function init() {
+
+				// SCENE
+				scene = new THREE.Scene();
+				scene.background = new THREE.Color( 0x444444 );
+
+				// CAMERA
+				var SCREEN_WIDTH = window.innerWidth;
+                var SCREEN_HEIGHT = window.innerHeight;
+	            var VIEW_ANGLE = 75; // 45
+                var ASPECT = SCREEN_WIDTH / SCREEN_HEIGHT;
+                var NEAR = 0.1;
+                var FAR = 50 ; // 20000
+
+				camera = new THREE.PerspectiveCamera( VIEW_ANGLE, ASPECT, NEAR, FAR);
+				camera.position.z = 30;
+				scene.add(camera);
+				camera.lookAt(scene.position);	
+
+				// RENDERER
+				renderer = new THREE.WebGLRenderer( {antialias:true} );
+				//renderer.setPixelRatio( window.devicePixelRatio );
+                renderer.setSize( window.innerWidth, window.innerHeight );
+                // container = document.getElementById( 'ThreeJS' );
+	            // container.appendChild( renderer.domElement );
+                document.body.appendChild( renderer.domElement );
+
+				// CONTROLS
+				orbits = new THREE.TrackballControls( camera, renderer.domElement );
+				orbits.enableZoom = true;
+
+				// LIGHT
+				const lights = [];
+                lights[ 0 ] = new THREE.PointLight( 0xffffff, 1, 0 );
+                lights[ 1 ] = new THREE.PointLight( 0xffffff, 1, 0 );
+                lights[ 2 ] = new THREE.PointLight( 0xffffff, 1, 0 );
+
+                lights[ 0 ].position.set( 0, 200, 0 );
+                lights[ 1 ].position.set( 100, 200, 100 );
+                lights[ 2 ].position.set( - 100, - 200, - 100 );
+
+                scene.add( lights[ 0 ] );
+                scene.add( lights[ 1 ] );
+                scene.add( lights[ 2 ] );
+				
+				////////////
+				// CUSTOM //
+				////////////
+				
+				//scene.add( new THREE.AxisHelper() );
+
+				window.addEventListener( 'resize', function () {
+
+					camera.aspect = window.innerWidth / window.innerHeight;
+					camera.updateProjectionMatrix();
+
+					renderer.setSize( window.innerWidth, window.innerHeight );
+
+					}, false );
+			}
+
+			function createGraph() {
+
+				//sin(sqrt(x^2  + y^2))  
+				console.log("New Graph!")
+
+				xRange = xMax - xMin;
+				console.log('xRange = ' + xRange);
+
+				yRange = yMax - yMin;
+				console.log('yRange = ' + yRange);
+
+				func = Parser.parse(funcText).toJSFunction( ['x','y'] );
+				console.log('function = ' + func);
+				meshFunction = function(x, y) 
+				{
+					x = xRange * x + xMin;
+					y = yRange * y + yMin;
+					var z = func(x,y); //= Math.cos(x) * Math.sqrt(y);
+					console.log(z);
+					if ( isNaN(z) )
+						return new THREE.Vector3(0,0,0); // TODO: better fix
+					else
+						return new THREE.Vector3(x, y, z);
+				};
+				
+				// true => sensible image tile repeat...
+				graphGeometry = new THREE.ParametricGeometry( meshFunction, segments, segments );
+				console.log(graphGeometry)
+				
+				
+			}
+
+			function handleEvents() {
+                // input text
+                input_text = document.getElementById('input_equation');
+                input_text.addEventListener('keydown', function(event) {
+                    if (event.key === 'Enter') {
+                        // Perform an action when the Enter key is pressed
+                        funcText = input_text.value;
+                        //funcText = "sin(sqrt(x^2  + y^2))";
+                        console.log('input equation: ' + funcText);
+
+                    }
+                });
+
+                // parameters
+                // first param
+                xMin_text  = document.getElementById('xMin');
+                xMin_text.addEventListener('keydown', function(event) {
+                    if (event.key === 'Enter') {
+                        // Perform an action when the Enter key is pressed
+                        xMin = xMin_text.value;
+                        console.log('x min value: ' + xMin);
+                    }
+                });
+
+                xMax_text  = document.getElementById('xMax');
+                xMax_text.addEventListener('keydown', function(event) {
+                    if (event.key === 'Enter') {
+                        // Perform an action when the Enter key is pressed
+                        xMax = xMax_text.value;
+                        console.log('x max value: ' + xMax);
+                    }
+                });
+
+                // second param
+                yMin_text  = document.getElementById('yMin');
+                yMin_text.addEventListener('keydown', function(event) {
+                    if (event.key === 'Enter') {
+                        // Perform an action when the Enter key is pressed
+                        yMin = yMin_text.value;
+                        console.log('y min value: ' + yMin);
+                    }
+                }); 
+
+                yMax_text  = document.getElementById('yMax');
+                yMax_text.addEventListener('keydown', function(event) {
+                    if (event.key === 'Enter') {
+                        // Perform an action when the Enter key is pressed
+                        yMax = yMax_text.value;
+                        console.log('y max value: ' + yMax);
+                    }
+                }); 
+
+                // segments
+                number_of_segments  = document.getElementById('segments');
+                number_of_segments.addEventListener('keydown', function(event) {
+                    if (event.key === 'Enter') {
+                        // Perform an action when the Enter key is pressed
+                        segments = number_of_segments.value;
+                        console.log('subdivisions: ' + segments);
+                    }
+                }); 
+
+                // button
+                button = document.getElementById('drawFunction');
+                button.addEventListener('click', function() {
+                    // Function code to be executed when the button is clicked
+                    console.log('Button clicked!');
+                    createGraph();
+                    // Add your custom code here
+                });
+            }
+            
+
+			function render() 
+			{
+				requestAnimationFrame( render );
+						renderer.render( scene, camera );
+			}
+
+		</script>
+	
+	</body>
+</html>
